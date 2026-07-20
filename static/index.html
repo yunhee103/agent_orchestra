@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Agent Orchestra</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #14100c; --panel: #201812; --border: #4a3826; --text: #efe6d4;
+    --dim: #a8977c; --accent: #f0b45a; --ok: #4ade80; --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 "Malgun Gothic", system-ui, sans-serif; }
+  .layout { display: flex; gap: 14px; max-width: 1400px; margin: 0 auto;
+            padding: 16px; align-items: flex-start; }
+  h1 { font-size: 18px; margin: 0; }
+  .game-col { flex: 1; min-width: 0; }
+  .side { width: 380px; flex-shrink: 0; display: flex; flex-direction: column;
+          gap: 12px; }
+  .panel { background: var(--panel); border: 2px solid var(--border);
+           border-radius: 8px; padding: 12px; }
+  /* 게임 화면 */
+  .stage { position: relative; border: 4px solid var(--border);
+           border-radius: 8px; overflow: hidden; background: #000; }
+  canvas { display: block; width: 100%; image-rendering: pixelated; }
+  /* RPG 대화창 */
+  #dialog { display: none; position: absolute; left: 3%; right: 3%; bottom: 3%;
+            background: rgba(16, 12, 8, .96); border: 3px solid var(--accent);
+            border-radius: 8px; padding: 14px 16px; max-height: 62%;
+            overflow: auto; box-shadow: 0 4px 24px rgba(0,0,0,.6); }
+  .dlg-head { color: var(--accent); font-weight: 700; margin-bottom: 6px; }
+  .dlg-q { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .dlg-why { color: var(--dim); font-size: 12px; margin-bottom: 10px; }
+  .dlg-opt { border: 1px solid var(--border); border-radius: 6px;
+             padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
+  .dlg-opt:hover { border-color: var(--accent); background: #2a2016; }
+  .dlg-opt.rec { border-color: var(--accent); }
+  .dlg-detail { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  .dlg-reason { color: var(--accent); font-size: 12px; margin-top: 4px; }
+  .dlg-log { font-size: 11px; max-height: 140px; }
+  /* 사이드 패널 */
+  textarea, input[type=text] { width: 100%; background: #171208;
+    color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px; font: inherit; }
+  textarea { min-height: 60px; resize: vertical; }
+  button { background: var(--accent); color: #241a08; border: 0;
+           border-radius: 6px; padding: 8px 16px; font: inherit;
+           font-weight: 700; cursor: pointer; white-space: nowrap;
+           flex-shrink: 0; }
+  button:disabled { opacity: .4; cursor: default; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row input { flex: 1; }
+  .stats { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .stats b { color: var(--accent); }
+  /* 모델 셀렉트 */
+  .mrow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .mrow span { width: 110px; color: var(--dim); font-size: 12px; }
+  .mrow select { flex: 1; background: #171208; color: var(--text);
+                 border: 1px solid var(--border); border-radius: 6px;
+                 padding: 5px 6px; font: inherit; font-size: 12px; }
+  .mrow select:disabled { opacity: .55; }
+  button.tool { background: transparent; color: var(--accent);
+                border: 1px solid var(--accent); font-weight: 600;
+                padding: 6px 12px; font-size: 12px; }
+  button.tool:hover { background: #2a2016; }
+  .krow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+          font-size: 12px; }
+  .krow span { width: 52px; color: var(--dim); flex-shrink: 0; }
+  .krow input { flex: 1; padding: 6px 8px; font-size: 12px; }
+  .krow em { font-style: normal; font-size: 11px; color: var(--ok);
+             white-space: nowrap; }
+  h2 { font-size: 13px; margin: 0 0 8px; color: var(--dim);
+       letter-spacing: .5px; }
+  /* 서기의 기록 */
+  #chronicle { max-height: 420px; overflow: auto; font-size: 13px; }
+  #chronicle .entry { padding: 6px 0; border-bottom: 1px dashed #33281a; }
+  #chronicle .entry.meet { color: var(--accent); }
+  #chronicle .entry.fail { color: var(--bad); }
+  #chronicle .t { color: var(--dim); font-size: 11px; margin-right: 6px;
+                  font-family: Consolas, monospace; }
+  #chronicle code { background: #171208; padding: 1px 4px; border-radius: 4px;
+                    font-size: 12px; }
+  #chronicle pre { white-space: pre-wrap; font-size: 11px; color: var(--dim); }
+  /* 태스크 칩 */
+  #taskChips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px;
+          border: 1px solid var(--border); border-radius: 999px;
+          padding: 3px 10px; font-size: 12px; cursor: pointer;
+          font-family: Consolas, monospace; }
+  .chip:hover { border-color: var(--accent); }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .chip em { color: #fbbf24; font-style: normal; font-size: 11px; }
+  /* 모달 */
+  #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+           align-items: center; justify-content: center; z-index: 10; }
+  .modal-box { background: var(--panel); border: 2px solid var(--border);
+               border-radius: 8px; max-width: 760px; width: 92%;
+               max-height: 80vh; overflow: auto; padding: 16px; }
+  .modal-box pre { background: #120e08; border: 1px solid var(--border);
+                   border-radius: 6px; padding: 10px; font-size: 12px;
+                   overflow: auto; white-space: pre-wrap; }
+  .credit { color: var(--dim); font-size: 11px; text-align: right; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="game-col">
+    <div class="stage">
+      <canvas id="game" width="960" height="528"></canvas>
+      <div id="dialog"></div>
+    </div>
+    <p class="credit">그래픽: 자체 제작</p>
+  </div>
+
+  <div class="side">
+    <div class="panel">
+      <h1>🎼 Agent Orchestra</h1>
+      <textarea id="reqInput" placeholder="예: FastAPI로 할일 관리 REST API 만들어줘"></textarea>
+      <div class="row">
+        <input type="text" id="workdirInput" value="./output_project">
+        <button id="startBtn">의뢰하기</button>
+      </div>
+      <div class="stats">
+        LLM 호출 <b id="llmCalls">0</b> / 60
+        <span id="modelInfo" style="margin-left:10px"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>🧠 역할별 모델</h2>
+      <div id="modelPanel"></div>
+      <div class="mrow"><span>포니테일 강도</span>
+        <select id="ponytailLevel">
+          <option value="lite">lite — 보수적</option>
+          <option value="full" selected>full — 기본</option>
+          <option value="ultra">ultra — 공격적 정리</option>
+          <option value="off">off — 미장착</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>🎀 포니테일 도구 (출력 프로젝트 대상)</h2>
+      <div class="row">
+        <button class="tool" id="btnAudit">전체 감사</button>
+        <button class="tool" id="btnDebt">부채 추적</button>
+        <button class="tool" id="btnGain">규모 지표</button>
+      </div>
+      <div class="stats">감사는 Fable 5 호출(비용 발생), 부채·지표는 무료(정적 분석)</div>
+    </div>
+
+    <div class="panel">
+      <h2>📌 태스크 현황 (클릭하면 상세)</h2>
+      <div id="taskChips"></div>
+    </div>
+
+    <div class="panel">
+      <h2>✍ 서기의 기록</h2>
+      <div id="chronicle"></div>
+    </div>
+
+    <div class="panel">
+      <h2>⚙ API 키 연동</h2>
+      <div class="krow"><span>Claude</span>
+        <input type="password" id="keyAnthropic" placeholder="sk-ant-...">
+        <em id="stAnthropic"></em></div>
+      <div class="krow"><span>OpenAI</span>
+        <input type="password" id="keyOpenai" placeholder="sk-...">
+        <em id="stOpenai"></em></div>
+      <div class="krow"><span>Gemini</span>
+        <input type="password" id="keyGoogle" placeholder="AI...">
+        <em id="stGoogle"></em></div>
+      <div class="row">
+        <button id="btnSaveKeys">저장</button>
+        <span class="stats">이 PC의 .env 파일에만 저장됩니다. 저장 즉시 모델 선택지에 반영.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="modal-box">
+    <h3 id="modalTitle"></h3>
+    <div id="modalBody"></div>
+    <button id="modalClose">닫기</button>
+  </div>
+</div>
+
+<script>
+  // 개발 편의: 캐시 우회 로드. 배포 시 고정 버전 쿼리로 바꿀 것.
+  const s = document.createElement("script");
+  s.src = "/static/game.js?v=" + Date.now();
+  document.body.appendChild(s);
+</script>
+</body>
+</html>

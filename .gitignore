@@ -1,0 +1,14 @@
+# 비밀 — 절대 커밋 금지 (UI에서 저장한 API 키)
+.env
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# 생성 산출물 (오케스트라가 만든 프로젝트)
+output_project/
