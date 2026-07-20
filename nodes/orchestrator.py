@@ -249,6 +249,12 @@ async def design_review(state: OrchestraState) -> dict:
         f"- [{t['role']}] {t['target_file']}: {t['description']}"
         for t in state["tasks"]
     )
+    # 사용자가 이미 내린 결정을 반드시 전달 — 없으면 리뷰어가 결정된 벤더를
+    # '추측'으로 오판해 불필요한 반려(재설계 낭비)가 발생한다. 실전에서 겪음.
+    decisions_text = "\n".join(
+        f"- {d['question']}: 사용자 결정 = {d['user_choice']}"
+        for d in state["decisions"]
+    ) or "(사용자 결정 없음)"
     skills_text = skills_block(state.get("ponytail_level", "full"))
     llm = make_llm(state["models"]["reviewer"], max_tokens=4096)
     response = await llm.ainvoke([
@@ -256,6 +262,7 @@ async def design_review(state: OrchestraState) -> dict:
                       + f"\n\n[장착된 리뷰 스킬]\n{skills_text}"),
         HumanMessage(content=(
             f"사용자 요청:\n{state['user_request']}\n\n"
+            f"사용자가 이미 확정한 결정 (이건 추측이 아니다):\n{decisions_text}\n\n"
             f"설계 체계:\n{state['architecture']}\n\n"
             f"개발 체계:\n{state['conventions']}\n\n"
             f"검증 체계:\n{state['verification_plan']}\n\n"
