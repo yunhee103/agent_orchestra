@@ -623,6 +623,18 @@ function handleNode(ev) {
       setTimeout(() => goHome(architect), 3500);
       break;
 
+    case "refactor":
+      setStage("리뷰 반영 — 재검증 중");
+      ev.results.forEach((r) => {
+        Object.assign(tasks[r.task_id] || {}, r, { status: "ready" });
+        const w = taskWorker[r.task_id];
+        if (w) { stopWork(w); say(w, "리뷰 지시 반영 완료. 다시 검증 부탁한다."); }
+      });
+      record(`🔧 <b>리뷰 반영</b> — 파일 ${ev.results.length}개를 아키텍트 지시대로 ` +
+             `단순화 재작성. 재검증에 들어간다.`, "meet");
+      renderTaskChips();
+      break;
+
     case "rework":
       setStage("재검증 중");
       ev.results.forEach((r) => {

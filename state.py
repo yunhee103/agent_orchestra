@@ -88,7 +88,8 @@ class OrchestraState(TypedDict):
     interface_spec: str
     design_review_rounds: int        # 설계 반려 횟수
     design_feedback: str             # 아키텍트의 반려 사유 (재설계 입력)
-    code_review_report: str          # 검증 통과 후 과잉 설계 리뷰 결과 (자문형)
+    code_review_report: str          # 검증 통과 후 과잉 설계 리뷰 결과
+    code_review_findings: list       # 리뷰 발견 [{file, issue, suggestion}] — 리팩터 입력
     tasks: list[SubTask]
     results: Annotated[list[TaskResult], merge_results]
     # 병렬 브랜치가 동시에 갱신하므로 누적 리듀서 필수. 노드는 총합이 아닌 증분을 반환할 것.
@@ -116,6 +117,7 @@ def initial_state(user_request: str, workdir: str, models: dict,
         "design_review_rounds": 0,
         "design_feedback": "",
         "code_review_report": "",
+        "code_review_findings": [],
         "tasks": [],
         "results": [],
         "llm_call_count": 0,

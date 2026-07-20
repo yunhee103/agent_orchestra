@@ -7,6 +7,7 @@
 """
 
 import asyncio
+from pathlib import Path
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -105,9 +106,14 @@ def finalize_node(state: OrchestraState) -> dict:
 
 
 def route_after_verify(state: OrchestraState) -> str:
-    """검증 결과에 따라 분기한다. 전부 통과면 포니테일 코드 리뷰를 거친다."""
+    """검증 결과에 따라 분기한다. 전부 통과면 포니테일 코드 리뷰를 거친다.
+
+    리뷰->리팩터 후 재검증이 통과하면(리포트 이미 존재) 바로 종료 — 리뷰 1회 원칙.
+    """
     if all(r["verified"] for r in state["results"]):
-        return "finalize" if state.get("ponytail_level") == "off" else "code_review"
+        if state.get("ponytail_level") == "off" or state.get("code_review_report"):
+            return "finalize"
+        return "code_review"
     over_retry = any(
         r["retry_count"] >= BUDGET.max_retries_per_task
         for r in state["results"]
@@ -117,6 +123,44 @@ def route_after_verify(state: OrchestraState) -> str:
     if over_retry or over_budget:
         return "escalate"
     return "rework"
+
+
+def route_after_code_review(state: OrchestraState) -> str:
+    """리뷰 발견이 있으면 반영(리팩터)한다. lite는 권고만 남기고 종료."""
+    if (state.get("code_review_findings")
+            and state.get("ponytail_level") in ("full", "ultra")):
+        return "refactor"
+    return "finalize"
+
+
+async def refactor_node(state: OrchestraState) -> dict:
+    """포니테일 리뷰 지시를 담당 워커가 반영해 재작성한다. 이후 재검증."""
+    task_map = {t["task_id"]: t for t in state["tasks"]}
+    by_path = {r["file_path"]: r for r in state["results"]}
+    by_name = {Path(r["file_path"]).name: r for r in state["results"]}
+
+    notes: dict[str, list[str]] = {}   # task_id -> 지시 목록 (파일당 병합)
+    targets: dict[str, dict] = {}
+    for f in state["code_review_findings"]:
+        r = by_path.get(f["file"]) or by_name.get(Path(f["file"]).name)
+        if r is None:
+            continue
+        notes.setdefault(r["task_id"], []).append(
+            f"{f.get('issue', '')}\n지시: {f['suggestion']}")
+        targets[r["task_id"]] = r
+
+    jobs = [
+        implement_task(
+            task_map[tid], state["interface_spec"], state["conventions"],
+            state["workdir"], state["models"]["worker"],
+            previous=targets[tid], revision_note="\n\n".join(note_list),
+        )
+        for tid, note_list in notes.items() if tid in task_map
+    ]
+    if not jobs:
+        return {"llm_call_count": 0}
+    refactored = await asyncio.gather(*jobs)
+    return {"results": list(refactored), "llm_call_count": len(refactored)}
 
 
 def route_after_escalate(state: OrchestraState) -> str:
@@ -143,6 +187,7 @@ def build_graph(checkpointer=None):
     builder.add_node("implement", implement_node)
     builder.add_node("verify", verify_node)
     builder.add_node("code_review", code_review)
+    builder.add_node("refactor", refactor_node)
     builder.add_node("rework", rework_node)
     builder.add_node("escalate", escalate_node)
     builder.add_node("finalize", finalize_node)
@@ -172,7 +217,11 @@ def build_graph(checkpointer=None):
         {"finalize": "finalize", "code_review": "code_review",
          "rework": "rework", "escalate": "escalate"},
     )
-    builder.add_edge("code_review", "finalize")
+    builder.add_conditional_edges(
+        "code_review", route_after_code_review,
+        {"refactor": "refactor", "finalize": "finalize"},
+    )
+    builder.add_edge("refactor", "verify")
     builder.add_edge("rework", "verify")
     builder.add_conditional_edges(
         "escalate",

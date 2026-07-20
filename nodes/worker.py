@@ -52,6 +52,17 @@ RETRY_SUFFIX = """
 {error_log}
 """
 
+REVISION_SUFFIX = """
+검증은 통과했지만 수석 아키텍트 코드 리뷰에서 아래 지시가 나왔다.
+동작(외부 인터페이스)은 바꾸지 말고, 지시를 반영해 전체 파일을 다시 작성하라.
+
+[이전 코드]
+{previous_code}
+
+[코드 리뷰 지시]
+{note}
+"""
+
 
 def _build_task_message(task: SubTask, interface_spec: str, conventions: str) -> str:
     """워커에게 전달할 태스크 메시지를 조립한다. 컨텍스트는 요약 없이 전부 포함."""
@@ -72,6 +83,7 @@ async def implement_task(
     workdir: str,
     model: str,
     previous: TaskResult | None = None,
+    revision_note: str | None = None,
 ) -> TaskResult:
     """태스크 하나를 구현하고 파일로 쓴다.
 
@@ -89,7 +101,10 @@ async def implement_task(
     llm = make_llm(model, max_tokens=8192)
     persona = ROLE_PERSONAS.get(task.get("role", ""), DEFAULT_PERSONA)
     message = _build_task_message(task, interface_spec, conventions)
-    if previous is not None and previous["last_error"]:
+    if previous is not None and revision_note:
+        message += REVISION_SUFFIX.format(
+            previous_code=previous["code"], note=revision_note)
+    elif previous is not None and previous["last_error"]:
         message += RETRY_SUFFIX.format(
             previous_code=previous["code"],
             error_log=previous["last_error"],

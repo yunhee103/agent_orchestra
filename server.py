@@ -92,6 +92,7 @@ NODE_INFO = {
     "implement": ("개발팀", "구축 체계 — 태스크 구현", "worker"),
     "verify": ("QA", "검증 체계 — Docker 샌드박스 (LLM 아님)", None),
     "code_review": ("수석 아키텍트", "포니테일 코드 리뷰 — 과잉 설계 감지", "reviewer"),
+    "refactor": ("개발팀", "리뷰 반영 — 단순화 재작성", "worker"),
     "rework": ("개발팀", "보강 체계 — 실패 태스크 재작업", "worker"),
     "escalate": ("에스컬레이션", "사람 판단 대기", None),
     "finalize": ("완료", "최종 요약", None),
@@ -372,6 +373,8 @@ async def rename_project(body: RenameRequest):
     safe = re.sub(r'[<>:"/\\|?*\s]+', "-", body.new_name.strip()).strip("-")[:50]
     if not safe:
         raise HTTPException(400, "폴더명이 비었음")
+    if safe == old.name:   # 같은 이름이면 에러 대신 그대로 통과
+        return {"workdir": str(old), "project_name": safe}
     new = old.parent / safe
     if new.exists():
         raise HTTPException(409, "같은 이름의 폴더가 이미 있음")
