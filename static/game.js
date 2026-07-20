@@ -440,7 +440,16 @@ function handle(ev) {
       break;
 
     case "done": {
-      record(`🏁 <b>실행 종료</b><pre>${esc(ev.final_summary)}</pre>`, "meet");
+      const fmtSec = (s) => (s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`);
+      const workTime = ev.work_seconds != null ? fmtSec(ev.work_seconds) : null;
+      const meetWait = (ev.elapsed_seconds || 0) - (ev.work_seconds || 0);
+      record(`🏁 <b>실행 종료</b>` +
+        (workTime ? ` — ⚡ 제작 시간 <b>${workTime}</b>` +
+          (meetWait > 5 ? ` <span style="color:var(--dim)">(+회의 대기 ${fmtSec(meetWait)})</span>` : "") : "") +
+        `<pre>${esc(ev.final_summary)}</pre>`, "meet");
+      if (workTime) {
+        toast(`프로젝트 완성 — 제작 시간 단 ${workTime}!`, "info", 8000);
+      }
       // 다들 자기 자리로 돌아가 앉고, 이름표 아래에 맡았던 역할을 남긴다.
       const ROLE_DONE = {
         "총괄": "기획·설계 총괄", "서기": "전 과정 기록", "QA": "샌드박스 검증",
@@ -460,7 +469,7 @@ function handle(ev) {
       });
       // 실행 종료 — 연결을 닫지 않으면 EventSource가 자동 재접속해서
       // 히스토리가 무한 리플레이된다 (렉처럼 보이는 원인).
-      setStage("완료"); setLive(false);
+      setStage(workTime ? `완료 — 제작 ${workTime}` : "완료"); setLive(false);
       $("startBtn").disabled = false;
       if (es) { es.close(); es = null; }
       break;

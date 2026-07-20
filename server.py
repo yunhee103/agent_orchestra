@@ -175,6 +175,9 @@ def _node_event(node: str, update: dict, models: dict) -> dict | None:
 
 async def _execute(run: Run) -> None:
     """그래프를 스트리밍 실행하며 이벤트를 emit하고, interrupt 시 재개를 기다린다."""
+    import time
+    started_at = time.monotonic()
+    wait_total = 0.0   # 회의(사용자 결정) 대기 시간 — 제작 시간에서 제외
     graph = build_graph(_SAVER)
     config = {"configurable": {"thread_id": run.id}}
     graph_input = initial_state(run.user_request, run.workdir, run.models,
@@ -193,14 +196,19 @@ async def _execute(run: Run) -> None:
                             run.emit(event)
             if interrupt_payload is None:
                 break
+            wait_start = time.monotonic()
             value = await run.wait_resume()
+            wait_total += time.monotonic() - wait_start
             run.emit({"type": "resumed", "value": value})
             graph_input = Command(resume=value)
 
         state = await graph.aget_state(config)
+        elapsed = time.monotonic() - started_at
         run.emit({"type": "done",
                   "final_summary": state.values.get("final_summary", "요약 없음"),
-                  "llm_calls_total": state.values.get("llm_call_count", 0)})
+                  "llm_calls_total": state.values.get("llm_call_count", 0),
+                  "elapsed_seconds": round(elapsed),
+                  "work_seconds": round(elapsed - wait_total)})
     except Exception as exc:  # 실행 오류도 UI에 보여야 한다
         run.emit({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
     finally:
