@@ -48,9 +48,11 @@ SELECTABLE_MODELS = {
                     "gemini-3-pro-preview", "gemini-2.5-pro"],
     },
     "utility": {
+        # 트렌드 조사 담당 — Gemini 계열은 Google 검색 그라운딩으로 직접 조사
         "default": "claude-haiku-4-5",
         "options": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-sonnet-5",
-                    "gpt-5-mini", "gemini-2.5-flash"],
+                    "gpt-5-mini", "gemini-2.5-flash", "gemini-2.5-pro",
+                    "gemini-3-pro-preview"],
     },
 }
 

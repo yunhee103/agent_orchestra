@@ -10,6 +10,7 @@ import re
 import httpx
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from config import MODEL_CATALOG
 from nodes.util import make_llm
 from state import OrchestraState
 
@@ -54,8 +55,38 @@ async def search_web(query: str, max_results: int = 8) -> list[dict]:
     return results
 
 
+async def _gemini_grounded_trends(state: OrchestraState, model: str) -> str:
+    """Gemini의 Google 검색 그라운딩으로 직접 조사한다.
+
+    유틸 모델이 Gemini일 때만 사용 — 검색·요약이 한 호출로 끝나고
+    DDG 스크래핑보다 검색 품질이 좋다.
+    """
+    from google.genai import types as genai_types
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    llm = ChatGoogleGenerativeAI(model=model, max_output_tokens=1024)
+    response = await llm.ainvoke(
+        [SystemMessage(content=SUMMARIZE_PROMPT),
+         HumanMessage(content=(
+             f"프로젝트 요청: {state['user_request']}\n\n"
+             "위 요청과 관련된 최신 기술 트렌드를 웹에서 검색해 요약하라."
+         ))],
+        tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+    )
+    return response.content
+
+
 async def trend_research(state: OrchestraState) -> dict:
     """요청 관련 최신 트렌드를 조사해 요약을 상태에 넣는다."""
+    model = state["models"]["utility"]
+    if MODEL_CATALOG.get(model) == "google":
+        try:
+            report = await _gemini_grounded_trends(state, model)
+            return {"trend_report": f"(Google 검색 그라운딩)\n{report}",
+                    "llm_call_count": 1}
+        except Exception:
+            pass   # 그라운딩 실패 시 아래 DDG 경로로 폴백
+
     query = f"{state['user_request'][:80]} 기술 스택 모범 사례 2026"
     results = await search_web(query)
     if not results:

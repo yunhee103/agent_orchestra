@@ -42,7 +42,7 @@ flowchart LR
 | 수석 아키텍트 | 구현 전 설계 리뷰 + 검증 후 과잉 설계 코드 리뷰 | 선택 (기본 Fable 5) |
 | 개발팀 | 백엔드/프론트/디자인/테스트/DevOps 시니어, 병렬 구현 | 선택 (Claude/GPT/Gemini) |
 | QA | Docker 샌드박스 결정적 검증 — LLM 아님 | — |
-| 트렌드봇 | 실시간 웹 조사로 최신 기술 동향을 설계에 공급 | 선택 (기본 Haiku) |
+| 트렌드봇 | 실시간 웹 조사로 최신 기술 동향을 설계에 공급. **Gemini 선택 시 Google 검색 그라운딩으로 직접 조사** | 선택 (기본 Haiku) |
 | 초청 전문가 | 규제 도메인·보안 등 특수 지식이 필요하면 총괄이 초청 | 총괄과 동일 |
 | 경리 | LLM 호출·예산 감시, 한도 전 경고 | — |
 | 서기 | 전 과정을 타임라인 내러티브로 기록 | — |
@@ -50,7 +50,9 @@ flowchart LR
 ## 멀티 프로바이더 & 인증
 
 - **모델**: 역할별로 UI에서 선택 — Claude (Fable 5 / Opus 4.8 / Sonnet 5 / Haiku 4.5),
-  OpenAI (GPT-5.1 / GPT-5), Google (Gemini 3 Pro / 2.5)
+  OpenAI (GPT-5.1 / GPT-5), Google (Gemini 3 Pro / 2.5 Pro / 2.5 Flash)
+- **역할별 전문성 활용**: 유틸(트렌드봇)에 Gemini를 고르면 DDG 스크래핑 대신
+  Gemini의 Google 검색 그라운딩으로 검색·요약을 한 호출에 처리 (실패 시 자동 폴백)
 - **Claude 인증 2가지**:
   - **API 키** — Anthropic Console 크레딧 결제
   - **구독 (Claude Code)** — Pro/Max/Team 구독으로 호출. 비밀번호는 앱을 거치지
