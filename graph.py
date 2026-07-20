@@ -126,8 +126,12 @@ def route_after_escalate(state: OrchestraState) -> str:
     return "rework"
 
 
-def build_graph():
-    """그래프를 컴파일해 반환한다. interrupt 사용을 위해 checkpointer 필수."""
+def build_graph(checkpointer=None):
+    """그래프를 컴파일해 반환한다. interrupt 사용을 위해 checkpointer 필수.
+
+    서버는 AsyncSqliteSaver를 넘겨 재시작에도 상태를 보존하고,
+    CLI는 기본 MemorySaver로 동작한다.
+    """
     builder = StateGraph(OrchestraState)
 
     builder.add_node("trend_research", trend_research)
@@ -177,4 +181,4 @@ def build_graph():
     )
     builder.add_edge("finalize", END)
 
-    return builder.compile(checkpointer=MemorySaver())
+    return builder.compile(checkpointer=checkpointer or MemorySaver())

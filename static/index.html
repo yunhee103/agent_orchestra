@@ -118,8 +118,13 @@
       <h1>🎼 Agent Orchestra</h1>
       <textarea id="reqInput" placeholder="예: FastAPI로 할일 관리 REST API 만들어줘"></textarea>
       <div class="row">
-        <input type="text" id="workdirInput" value="./output_project">
+        <input type="text" id="workdirInput" value="./projects"
+               title="프로젝트 폴더들이 생성될 상위 디렉토리">
         <button id="startBtn">의뢰하기</button>
+      </div>
+      <div class="row hidden" id="projectRow" style="align-items:center">
+        <span class="stats">📁 프로젝트: <b id="projName"></b></span>
+        <button class="tool" id="btnRename">폴더명 변경</button>
       </div>
       <div class="stats">
         LLM 호출 <b id="llmCalls">0</b> / 60

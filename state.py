@@ -93,7 +93,9 @@ class OrchestraState(TypedDict):
     results: Annotated[list[TaskResult], merge_results]
     # 병렬 브랜치가 동시에 갱신하므로 누적 리듀서 필수. 노드는 총합이 아닌 증분을 반환할 것.
     llm_call_count: Annotated[int, operator.add]
-    workdir: str
+    base_dir: str                    # 프로젝트 폴더들이 생성되는 상위 디렉토리
+    project_name: str                # 총괄이 설계 시 지은 이름 (폴더명)
+    workdir: str                     # 실제 생성 위치 = base_dir/project_name
     final_summary: Optional[str]
 
 
@@ -117,6 +119,10 @@ def initial_state(user_request: str, workdir: str, models: dict,
         "tasks": [],
         "results": [],
         "llm_call_count": 0,
+        "base_dir": workdir,
+        "project_name": "",
+        # 총괄이 프로젝트 이름을 짓기 전까지는 base에 직접 쓰지 않도록
+        # decompose에서 base_dir/<이름> 으로 갱신된다.
         "workdir": workdir,
         "final_summary": None,
     }

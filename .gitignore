@@ -12,3 +12,6 @@ __pycache__/
 
 # 생성 산출물 (오케스트라가 만든 프로젝트)
 output_project/
+orchestra.db*
+projects/
+.claude/scheduled_tasks.lock

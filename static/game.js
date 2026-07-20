@@ -50,6 +50,7 @@ const px = (gx) => gx * TS + TS / 2;   // 그리드 -> 픽셀 중심
 // ---------- 상태 ----------
 const $ = (id) => document.getElementById(id);
 let runId = null, models = {}, llmCalls = 0;
+let currentWorkdir = null, es = null;
 let tasks = {};            // task_id -> {task_id, role, target_file, status, ...}
 let taskWorker = {};       // task_id -> actor
 let actors = [];
@@ -381,7 +382,9 @@ function handle(ev) {
       }
       break;
 
-    case "resumed": break;
+    case "resumed":
+      closeDialog();   // 히스토리 재생 시 이미 답한 회의 대화창이 다시 열리는 것 방지
+      break;
 
     case "done":
       record(`🏁 <b>실행 종료</b><pre>${esc(ev.final_summary)}</pre>`, "meet");
@@ -434,6 +437,12 @@ function handleNode(ev) {
     }
 
     case "decompose": {
+      if (ev.workdir) {
+        currentWorkdir = ev.workdir;
+        $("projName").textContent = ev.project_name;
+        $("projectRow").classList.remove("hidden");
+        record(`📁 <b>프로젝트 폴더 생성</b> — <code>${esc(ev.project_name)}</code>`, "meet");
+      }
       totalTasks = ev.tasks.length; implementedCount = 0;
       // 재설계인 경우 기존 워커 제거 후 다시 배치
       Object.values(taskWorker).forEach((w) => { w.visible = false; });
@@ -580,13 +589,43 @@ $("startBtn").onclick = async () => {
                            models: selectedModels(),
                            ponytail_level: $("ponytailLevel").value }),
   });
-  runId = (await res.json()).run_id;
-  new EventSource(`/runs/${runId}/events`).onmessage =
-    (e) => handle(JSON.parse(e.data));
+  attachRun((await res.json()).run_id);
 };
 
+// ---------- 실행 연결 (새로고침/다른 클라이언트 시작 실행에도 붙는다) ----------
+function attachRun(id) {
+  if (es) es.close();
+  runId = id;
+  llmCalls = 0; tasks = {}; currentWorkdir = null;
+  $("projectRow").classList.add("hidden");
+  es = new EventSource(`/runs/${id}/events`);   // 서버가 히스토리 전체를 재생해줌
+  es.onmessage = (e) => handle(JSON.parse(e.data));
+}
+
+async function attachLatest() {
+  try {
+    const runs = await (await fetch("/runs")).json();
+    if (runs.length && runs[0].run_id !== runId) attachRun(runs[0].run_id);
+  } catch (e) { /* 서버 재시작 중이면 다음 폴링에서 재시도 */ }
+}
+setInterval(attachLatest, 8000);
+
 // ---------- 포니테일 도구 버튼 ----------
-const wd = () => encodeURIComponent($("workdirInput").value);
+const wd = () => encodeURIComponent(currentWorkdir || $("workdirInput").value);
+
+$("btnRename").onclick = async () => {
+  const name = prompt("새 폴더명:", $("projName").textContent);
+  if (!name || !currentWorkdir) return;
+  const r = await fetch("/projects/rename", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workdir: currentWorkdir, new_name: name }),
+  });
+  if (!r.ok) { record(`❌ 폴더명 변경 실패: ${esc((await r.json()).detail)}`, "fail"); return; }
+  const d = await r.json();
+  currentWorkdir = d.workdir;
+  $("projName").textContent = d.project_name;
+  record(`📁 폴더명 변경 → <code>${esc(d.project_name)}</code>`, "meet");
+};
 
 $("btnAudit").onclick = async () => {
   record("🎀 /ponytail-audit 실행 중... (Fable 5)");
@@ -671,3 +710,4 @@ $("btnSaveKeys").onclick = async () => {
 resetScene();
 loadModels();
 loadKeyStatus();
+attachLatest();   // 새로고침 후에도 진행 중/최근 실행에 자동 연결
