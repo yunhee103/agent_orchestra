@@ -162,6 +162,11 @@
 
     <div class="panel">
       <h2>⚙ API 키 연동</h2>
+      <div class="krow"><span>Claude 인증</span>
+        <select id="claudeAuth" style="flex:1">
+          <option value="api">API 키 (크레딧 결제)</option>
+          <option value="subscription">구독 (Claude Code, Pro/Max)</option>
+        </select></div>
       <div class="krow"><span>Claude</span>
         <input type="password" id="keyAnthropic" placeholder="sk-ant-...">
         <em id="stAnthropic"></em></div>

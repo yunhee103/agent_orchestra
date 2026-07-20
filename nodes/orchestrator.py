@@ -122,9 +122,31 @@ DESIGN_REVIEW_PROMPT = """너는 수석 아키텍트다. 구현이 시작되기 
 """
 
 
-def _parse_json(raw: str) -> dict:
-    """모델 응답에서 JSON을 파싱한다. 코드펜스가 섞여 오면 제거한다."""
-    return json.loads(strip_code_fence(raw))
+async def _parse_json(raw: str, llm) -> dict:
+    """모델 응답에서 JSON을 파싱한다. 3단 복구 사다리.
+
+    1. 코드펜스 제거 후 그대로 파싱
+    2. 실패 시 가장 바깥 {...} 블록만 추출해 파싱 (앞뒤 잡담 제거)
+    3. 그래도 실패하면 같은 모델에게 수리를 1회 요청 (비결정적 이스케이프
+       깨짐 대응 — 실전에서 실제로 발생함)
+    """
+    text = strip_code_fence(raw)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    response = await llm.ainvoke([
+        ("system", "아래 텍스트를 의미 변경 없이 유효한 JSON으로 고쳐라. "
+                   "마크다운 코드펜스 없이 순수 JSON만 출력하라."),
+        ("human", text),
+    ])
+    return json.loads(strip_code_fence(response.content))
 
 
 async def collect_decisions(state: OrchestraState) -> dict:
@@ -137,7 +159,7 @@ async def collect_decisions(state: OrchestraState) -> dict:
             f"최신 트렌드 조사:\n{state['trend_report']}"
         )),
     ])
-    parsed = _parse_json(response.content)
+    parsed = await _parse_json(response.content, llm)
     return {
         "decisions": parsed.get("decisions", []),
         "specialists": parsed.get("specialists", []),
@@ -183,7 +205,7 @@ async def decompose(state: OrchestraState) -> dict:
             f"설계 반려 피드백:\n{feedback}"
         )),
     ])
-    parsed = _parse_json(response.content)
+    parsed = await _parse_json(response.content, llm)
     return {
         "architecture": parsed.get("architecture", ""),
         "conventions": parsed.get("conventions", ""),
@@ -214,7 +236,7 @@ async def design_review(state: OrchestraState) -> dict:
             f"태스크 목록:\n{tasks_text}"
         )),
     ])
-    parsed = _parse_json(response.content)
+    parsed = await _parse_json(response.content, llm)
     approved = bool(parsed.get("approved"))
     feedback = parsed.get("feedback", "")
     issues = parsed.get("issues", [])
@@ -257,7 +279,7 @@ async def code_review(state: OrchestraState) -> dict:
             f"사용자 요청:\n{state['user_request']}\n\n생성된 코드:\n{corpus}"
         )),
     ])
-    parsed = _parse_json(response.content)
+    parsed = await _parse_json(response.content, llm)
     findings = parsed.get("findings", [])
     saved = sum(f.get("deletable_lines", 0) or 0 for f in findings)
     lines = [f"- {f['file']}: {f['issue']} -> {f['suggestion']}" for f in findings]

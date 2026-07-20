@@ -34,8 +34,13 @@ PROVIDER_KEY_ENV = {
     "google": "GOOGLE_API_KEY",
 }
 
-# 사용자가 UI에서 선택 가능한 역할과 후보. 고정 역할은 LOCKED_MODELS에.
+# 사용자가 UI에서 선택 가능한 역할과 후보. 전 역할 선택 가능.
+# 총괄/리뷰어 기본값은 Fable 5 — 분해·설계 품질이 전체 품질을 결정하기 때문.
+_TOP_TIER = [FABLE, "claude-opus-4-8", "claude-sonnet-5",
+             "gpt-5.1", "gemini-3-pro-preview"]
 SELECTABLE_MODELS = {
+    "orchestrator": {"default": FABLE, "options": _TOP_TIER},
+    "reviewer": {"default": FABLE, "options": _TOP_TIER},
     "worker": {
         "default": "claude-sonnet-5",
         "options": ["claude-sonnet-5", "claude-opus-4-8", "claude-sonnet-4-6",
@@ -48,17 +53,15 @@ SELECTABLE_MODELS = {
                     "gpt-5-mini", "gemini-2.5-flash"],
     },
 }
-LOCKED_MODELS = {"orchestrator": FABLE, "reviewer": FABLE}
 
 
 def default_models() -> dict:
     """실행 한 건에 쓸 역할->모델 매핑 기본값."""
-    return {**LOCKED_MODELS,
-            **{role: cfg["default"] for role, cfg in SELECTABLE_MODELS.items()}}
+    return {role: cfg["default"] for role, cfg in SELECTABLE_MODELS.items()}
 
 
 def resolve_models(overrides: dict | None) -> dict:
-    """사용자 선택을 반영하되 고정 역할과 허용 목록은 강제한다."""
+    """사용자 선택을 반영한다. 허용 목록 밖의 값은 무시."""
     models = default_models()
     for role, model in (overrides or {}).items():
         if role in SELECTABLE_MODELS and model in SELECTABLE_MODELS[role]["options"]:

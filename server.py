@@ -23,7 +23,7 @@ import re
 
 import os
 
-from config import (LOCKED_MODELS, MODEL_CATALOG, PROVIDER_KEY_ENV,
+from config import (MODEL_CATALOG, PROVIDER_KEY_ENV,
                     SELECTABLE_MODELS, resolve_models)
 from graph import build_graph
 from nodes.orchestrator import PONYTAIL_LEVELS, load_skills, skills_block
@@ -204,17 +204,22 @@ async def get_models():
 
     available=False(해당 프로바이더 API 키 없음)인 모델은 UI에서 비활성화된다.
     """
+    subscription = os.environ.get("CLAUDE_AUTH_MODE") == "subscription"
+
     def enrich(model_id: str) -> dict:
         provider = MODEL_CATALOG.get(model_id, "anthropic")
-        return {"id": model_id, "provider": provider,
-                "available": bool(os.environ.get(PROVIDER_KEY_ENV[provider]))}
+        available = bool(os.environ.get(PROVIDER_KEY_ENV[provider]))
+        if provider == "anthropic" and subscription:
+            available = True   # 구독 인증은 API 키 불필요
+        return {"id": model_id, "provider": provider, "available": available}
 
     selectable = {
         role: {"default": cfg["default"],
                "options": [enrich(m) for m in cfg["options"]]}
         for role, cfg in SELECTABLE_MODELS.items()
     }
-    return {"locked": LOCKED_MODELS, "selectable": selectable,
+    return {"selectable": selectable,
+            "claude_auth": "subscription" if subscription else "api",
             "ponytail_levels": list(PONYTAIL_LEVELS)}
 
 
@@ -257,17 +262,40 @@ async def get_keys():
     return _key_status()
 
 
+def _write_env() -> None:
+    """API 키 + 인증 모드를 .env에 저장한다."""
+    names = list(PROVIDER_KEY_ENV.values()) + ["CLAUDE_AUTH_MODE"]
+    lines = [f"{n}={os.environ[n]}" for n in names if os.environ.get(n)]
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 @app.post("/settings/keys")
 async def save_keys(body: KeysRequest):
     """비어있지 않은 키만 갱신한다. 프로세스 환경 즉시 반영 + .env에 저장."""
     for provider, value in body.model_dump().items():
         if value and value.strip():
             os.environ[PROVIDER_KEY_ENV[provider]] = value.strip()
-    lines = [f"{env_name}={os.environ[env_name]}"
-             for env_name in PROVIDER_KEY_ENV.values()
-             if os.environ.get(env_name)]
-    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_env()
     return _key_status()
+
+
+class AuthModeRequest(BaseModel):
+    mode: str   # "api" | "subscription"
+
+
+@app.get("/settings/claude-auth")
+async def get_claude_auth():
+    return {"mode": os.environ.get("CLAUDE_AUTH_MODE", "api") or "api"}
+
+
+@app.post("/settings/claude-auth")
+async def set_claude_auth(body: AuthModeRequest):
+    """Claude 호출 경로 전환: API 키 결제 vs Pro/Max 구독(Claude Code)."""
+    if body.mode not in ("api", "subscription"):
+        raise HTTPException(400, "mode는 api 또는 subscription")
+    os.environ["CLAUDE_AUTH_MODE"] = body.mode
+    _write_env()
+    return {"mode": body.mode}
 
 
 # ---------- 포니테일 도구 (온디맨드) ----------
@@ -298,7 +326,7 @@ async def ponytail_audit(workdir: str, level: str = "full"):
         for p in files[:30]
     )
     skills = skills_block(level if level in PONYTAIL_LEVELS else "full")
-    llm = make_llm(LOCKED_MODELS["reviewer"], max_tokens=4096)
+    llm = make_llm(resolve_models(None)["reviewer"], max_tokens=4096)
     response = await llm.ainvoke([
         ("system", "너는 수석 아키텍트다. 레포 전체를 스캔해 불필요한 복잡도, "
                    "데드코드, 삭제/병합 후보를 찾아라(/ponytail-audit). "

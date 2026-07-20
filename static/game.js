@@ -548,10 +548,6 @@ async function loadModels() {
   const cfg = await res.json();
   const rows = [];
   const label = { orchestrator: "총괄·설계", reviewer: "설계 리뷰", worker: "워커(개발팀)", utility: "유틸·트렌드" };
-  for (const [role, model] of Object.entries(cfg.locked)) {
-    rows.push(`<div class="mrow"><span>${label[role] || role}</span>
-      <select disabled><option>${model} (고정)</option></select></div>`);
-  }
   const PROV = { anthropic: "Claude", openai: "GPT", google: "Gemini" };
   for (const [role, sc] of Object.entries(cfg.selectable)) {
     rows.push(`<div class="mrow"><span>${label[role] || role}</span>
@@ -630,12 +626,30 @@ const KEY_FIELDS = { anthropic: "Anthropic", openai: "Openai", google: "Google" 
 
 async function loadKeyStatus() {
   const st = await (await fetch("/settings/keys")).json();
+  const auth = await (await fetch("/settings/claude-auth")).json();
+  $("claudeAuth").value = auth.mode;
   for (const [provider, suffix] of Object.entries(KEY_FIELDS)) {
     const el = $("st" + suffix);
+    if (provider === "anthropic" && auth.mode === "subscription") {
+      el.textContent = "구독 인증 사용 중";
+      el.style.color = "var(--ok)";
+      continue;
+    }
     el.textContent = st[provider].set ? `연동됨 ${st[provider].hint}` : "미설정";
     el.style.color = st[provider].set ? "var(--ok)" : "var(--dim)";
   }
 }
+
+$("claudeAuth").onchange = async () => {
+  await fetch("/settings/claude-auth", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: $("claudeAuth").value }),
+  });
+  await loadKeyStatus();
+  await loadModels();
+  record(`⚙ Claude 인증 방식 변경: <b>${$("claudeAuth").value === "subscription"
+    ? "구독 (Claude Code)" : "API 키"}</b>`);
+};
 
 $("btnSaveKeys").onclick = async () => {
   const body = {};
