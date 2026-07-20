@@ -160,6 +160,21 @@
                    font-family: var(--mono); }
   .credit { color: var(--dim); font-size: 11px; text-align: right;
             margin-top: 8px; }
+  /* 토스트 알림 */
+  #toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+           display: flex; flex-direction: column; gap: 8px; z-index: 20;
+           pointer-events: none; }
+  .toast { background: var(--panel); border: 1px solid var(--border);
+           border-left: 3px solid var(--accent); border-radius: 10px;
+           padding: 10px 16px; font-size: 13px; color: var(--text);
+           box-shadow: 0 8px 28px rgba(0,0,0,.5);
+           display: flex; align-items: center; gap: 8px;
+           animation: toast-in .18s ease-out; }
+  .toast.err { border-left-color: var(--bad); }
+  .toast svg { width: 15px; height: 15px; color: var(--accent);
+               flex-shrink: 0; }
+  .toast.err svg { color: var(--bad); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } }
   .hidden { display: none; }
   @media (prefers-reduced-motion: reduce) {
     .live-dot.on { animation: none; }
@@ -264,6 +279,8 @@
     </div>
   </div>
 </div>
+
+<div id="toast"></div>
 
 <div id="modal">
   <div class="modal-box">

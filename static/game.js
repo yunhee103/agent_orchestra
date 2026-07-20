@@ -248,6 +248,17 @@ function iconize(html) {
 }
 function refreshIcons() { if (window.lucide) lucide.createIcons(); }
 
+// 토스트 팝업 — 오류 원인을 화면에 직접 알린다
+function toast(msg, type = "info", ms = 3500) {
+  const t = document.createElement("div");
+  t.className = "toast" + (type === "err" ? " err" : "");
+  t.innerHTML = iconize((type === "err" ? "⚠ " : "💡 ") + esc(msg));
+  $("toast").appendChild(t);
+  refreshIcons();
+  setTimeout(() => t.remove(), ms);
+  if (type === "err") console.warn("[orchestra]", msg);
+}
+
 function record(text, cls = "") {
   text = iconize(text);
   const d = document.createElement("div");
@@ -447,6 +458,7 @@ function handle(ev) {
       // 실행 종료 — 연결을 닫지 않으면 EventSource가 자동 재접속해서
       // 히스토리가 무한 리플레이된다 (렉처럼 보이는 원인).
       setStage("완료"); setLive(false);
+      $("startBtn").disabled = false;
       if (es) { es.close(); es = null; }
       break;
     }
@@ -455,6 +467,7 @@ function handle(ev) {
       record(`❌ <b>오류</b> — ${esc(ev.message)}`, "fail");
       say(verifier, "문제가 생겼다! 기록을 확인하라.", 6000);
       setStage("오류"); setLive(false);
+      $("startBtn").disabled = false;
       if (es) { es.close(); es = null; }   // 재접속 무한 리플레이 방지
       break;
   }
@@ -647,15 +660,31 @@ function selectedModels() {
 // ---------- 시작 ----------
 $("startBtn").onclick = async () => {
   const user_request = $("reqInput").value.trim();
-  if (!user_request) return;
+  if (!user_request) {
+    toast("의뢰 내용이 비어 있습니다 — 만들고 싶은 것을 입력해 주세요.", "err");
+    $("reqInput").focus();
+    return;
+  }
+  if (!$("workdirInput").value.trim()) {
+    toast("프로젝트 상위 폴더 경로가 비어 있습니다 (예: ./projects).", "err");
+    $("workdirInput").focus();
+    return;
+  }
   $("startBtn").disabled = true;
-  const res = await fetch("/runs", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_request, workdir: $("workdirInput").value,
-                           models: selectedModels(),
-                           ponytail_level: $("ponytailLevel").value }),
-  });
-  attachRun((await res.json()).run_id);
+  try {
+    const res = await fetch("/runs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_request, workdir: $("workdirInput").value,
+                             models: selectedModels(),
+                             ponytail_level: $("ponytailLevel").value }),
+    });
+    if (!res.ok) throw new Error(`서버 응답 ${res.status}`);
+    attachRun((await res.json()).run_id);
+    toast("의뢰가 접수됐습니다. AI 팀이 작업을 시작합니다.");
+  } catch (e) {
+    toast(`의뢰 시작 실패: ${e.message} — 서버(uvicorn)가 켜져 있는지 확인하세요.`, "err", 6000);
+    $("startBtn").disabled = false;
+  }
 };
 
 // ---------- 실행 연결 (새로고침/다른 클라이언트 시작 실행에도 붙는다) ----------
