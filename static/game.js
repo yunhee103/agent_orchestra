@@ -233,19 +233,36 @@ function wrap(text, n) {
 }
 
 // ---------- 서기의 기록 ----------
+// DOM에 들어가는 이모지는 lucide 아이콘으로 자동 치환 (한 곳에서 관리)
+const EMOJI_ICON = {
+  "📜": "scroll-text", "🗳": "vote", "💰": "wallet", "🛠": "wrench",
+  "🔔": "bell-ring", "🚨": "siren", "🏁": "flag", "❌": "circle-x",
+  "🤖": "bot", "📞": "phone-call", "👔": "briefcase", "📁": "folder",
+  "📋": "git-fork", "✅": "circle-check", "⛔": "ban", "🛡": "shield-check",
+  "⚠": "triangle-alert", "🎀": "scissors", "🔧": "hammer", "📦": "package",
+  "⚙": "settings-2", "🎉": "party-popper", "💡": "lightbulb",
+};
+const EMOJI_RE = new RegExp(Object.keys(EMOJI_ICON).join("|"), "g");
+function iconize(html) {
+  return html.replace(EMOJI_RE, (m) => `<i data-lucide="${EMOJI_ICON[m]}"></i>`);
+}
+function refreshIcons() { if (window.lucide) lucide.createIcons(); }
+
 function record(text, cls = "") {
+  text = iconize(text);
   const d = document.createElement("div");
   d.className = "entry " + cls;
   const t = new Date().toLocaleTimeString("ko-KR", { hour12: false });
   d.innerHTML = `<span class="t">${t}</span>${text}`;
   $("chronicle").prepend(d);
+  refreshIcons();
 }
 const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const fold = (title, body) =>
   `<details><summary>${title}</summary><pre>${esc(body)}</pre></details>`;
 
 // ---------- 태스크 칩 ----------
-const DOT = { impl: "#c084fc", ready: "#6ea8fe", pass: "#4ade80", fail: "#f87171" };
+const DOT = { impl: "#a78bfa", ready: "#7c8cf8", pass: "#3fd9a3", fail: "#f0716a" };
 function renderTaskChips() {
   $("taskChips").innerHTML = Object.values(tasks).map((t) =>
     `<span class="chip" data-id="${t.task_id}">
@@ -266,10 +283,21 @@ function showTaskModal(id) {
 }
 $("modalClose").onclick = () => ($("modal").style.display = "none");
 
-function updateStats() { $("llmCalls").textContent = llmCalls; }
+function updateStats() {
+  $("llmCalls").textContent = llmCalls;
+  $("sbCalls").textContent = llmCalls;
+}
+
+// 라이브 상태 스트립
+function setStage(text) { $("stageText").textContent = text; }
+function setLive(on) { $("liveDot").classList.toggle("on", on); }
 
 // ---------- RPG 대화창 ----------
-function openDialog(html) { $("dialog").innerHTML = html; $("dialog").style.display = "block"; }
+function openDialog(html) {
+  $("dialog").innerHTML = iconize(html);
+  $("dialog").style.display = "block";
+  refreshIcons();
+}
 function closeDialog() { $("dialog").style.display = "none"; }
 
 function showDecisionDialog() {
@@ -281,7 +309,8 @@ function showDecisionDialog() {
     <div class="dlg-why">${esc(d.why_important)}</div>
     <div class="dlg-opts">${d.options.map((o, i) => `
       <div class="dlg-opt ${o.name === d.recommended ? "rec" : ""}" data-i="${i}">
-        ▶ ${esc(o.name)} ${o.name === d.recommended ? "★추천" : ""}
+        ${esc(o.name)} ${o.name === d.recommended
+          ? '<i data-lucide="star"></i> 추천' : ""}
         <div class="dlg-detail">장점: ${esc(o.pros)}<br>단점: ${esc(o.cons)}<br>적합: ${esc(o.fit)}</div>
       </div>`).join("")}</div>
     <div class="dlg-reason">💡 ${esc(d.reason)}</div>`);
@@ -362,6 +391,7 @@ function handle(ev) {
       $("modelInfo").textContent =
         `총괄·설계 ${models.orchestrator} · 리뷰 ${models.reviewer} · 워커 ${models.worker} · 유틸 ${models.utility}`;
       resetScene();
+      setStage("트렌드 조사 중"); setLive(true);
       walkTo(trendbot, 3, 3);
       say(trendbot, "삐빅. 최신 트렌드 조사 시작.", 4000);
       record(`📜 <b>새 의뢰 접수</b> — "${esc(ev.request)}"`, "meet");
@@ -377,6 +407,7 @@ function handle(ev) {
 
     case "interrupt":
       if (ev.payload.type === "decision_required") {
+        setStage("회의 — 당신의 결정 대기");
         gatherMeeting();
         say(orch, "전원 회의 소집! 당신의 결정이 필요하다.", 6000);
         record(`🔔 <b>회의 소집</b> — 결정 안건 ${ev.payload.decisions.length}건. 당신의 선택을 기다린다.`, "meet");
@@ -415,6 +446,7 @@ function handle(ev) {
       });
       // 실행 종료 — 연결을 닫지 않으면 EventSource가 자동 재접속해서
       // 히스토리가 무한 리플레이된다 (렉처럼 보이는 원인).
+      setStage("완료"); setLive(false);
       if (es) { es.close(); es = null; }
       break;
     }
@@ -422,6 +454,7 @@ function handle(ev) {
     case "error":
       record(`❌ <b>오류</b> — ${esc(ev.message)}`, "fail");
       say(verifier, "문제가 생겼다! 기록을 확인하라.", 6000);
+      setStage("오류"); setLive(false);
       if (es) { es.close(); es = null; }   // 재접속 무한 리플레이 방지
       break;
   }
@@ -430,13 +463,15 @@ function handle(ev) {
 function handleNode(ev) {
   switch (ev.node) {
     case "trend_research":
+      setStage("기획 — 결정 수집 중");
       goHome(trendbot);
       say(trendbot, "트렌드 조사 완료. 보고서 전달!", 4500);
       record(`🤖 <b>트렌드봇 보고</b> (${ev.model})` +
              fold("조사 내용 보기", ev.trend_report), "meet");
       break;
 
-    case "collect_decisions": {
+    case "collect_decisions":
+      setStage("체계 설계 중"); {
       say(orch, `결정 안건 ${ev.decision_count}건을 정리했다.`);
       record(`총괄(${ev.model})이 기획 체계에 따라 중대 결정 ${ev.decision_count}건을 안건으로 올렸다.`);
       const sps = ev.specialists || [];
@@ -449,6 +484,7 @@ function handleNode(ev) {
     }
 
     case "consult": {
+      setStage("전문가 자문 중");
       (ev.specialists || []).forEach((sp, i) => {
         const g = makeActor(SPRITES.guest, sp.role, -1, 2 + i);
         guests.push(g);
@@ -461,6 +497,7 @@ function handleNode(ev) {
     }
 
     case "decompose": {
+      setStage("설계 리뷰 중");
       if (ev.workdir) {
         currentWorkdir = ev.workdir;
         $("projName").textContent = ev.project_name;
@@ -497,6 +534,7 @@ function handleNode(ev) {
     }
 
     case "design_review":
+      setStage(ev.approved ? "구현 중" : "재설계 중");
       walkTo(architect, ORCH_POST[0] + 1, ORCH_POST[1]);
       if (ev.approved) {
         say(architect, "설계 리뷰 통과. 구현 들어가자!", 5000);
@@ -517,6 +555,7 @@ function handleNode(ev) {
       if (w) { stopWork(w); say(w, `✅ 완료!`); }
       record(`<b>${w ? w.name : r.task_id}</b>(${ev.model})가 <code>${esc(tasks[r.task_id].target_file)}</code> 구현을 마쳤다.`);
       implementedCount++;
+      setStage(`구현 중 (${implementedCount}/${totalTasks})`);
       renderTaskChips();
       if (implementedCount >= totalTasks) {
         say(verifier, "전원 제출! 서버랙에서 검증 들어간다.", 4000);
@@ -527,6 +566,7 @@ function handleNode(ev) {
     }
 
     case "verify": {
+      setStage(ev.results.every((r) => r.verified) ? "코드 리뷰 중" : "재작업 중");
       verifier.patrol = null; goHome(verifier);
       const allPass = ev.results.every((r) => r.verified);
       ev.results.forEach((r) => Object.assign(tasks[r.task_id], r,
@@ -550,6 +590,7 @@ function handleNode(ev) {
     }
 
     case "code_review":
+      setStage("마무리 중");
       walkTo(architect, 10, 7);   // 개발팀 자리 쪽으로 걸어가 코드 리뷰
       say(architect, "검증은 통과. 이제 군더더기를 보자.", 4500);
       record(`🎀 <b>포니테일 코드 리뷰</b> — 수석 아키텍트(${ev.model})` +
@@ -558,6 +599,7 @@ function handleNode(ev) {
       break;
 
     case "rework":
+      setStage("재검증 중");
       ev.results.forEach((r) => {
         Object.assign(tasks[r.task_id], r, { status: "ready" });
         const w = taskWorker[r.task_id];
@@ -622,6 +664,7 @@ function attachRun(id) {
   runId = id;
   llmCalls = 0; tasks = {}; currentWorkdir = null;
   $("projectRow").classList.add("hidden");
+  setLive(true);
   es = new EventSource(`/runs/${id}/events`);   // 서버가 히스토리 전체를 재생해줌
   es.onmessage = (e) => handle(JSON.parse(e.data));
 }
@@ -698,9 +741,10 @@ async function loadKeyStatus() {
       fetch("/settings/claude-auth/status").then((r) => r.json()).then((s) => {
         const who = s.email || s.org || "claude.ai 계정";
         const tier = s.subscription ? ` (${s.subscription})` : "";
-        el.textContent = s.logged_in
-          ? `구독 연동: ${who}${tier}`
-          : "⚠ 로그인 필요 — 터미널에서 claude 실행 후 /login";
+        el.innerHTML = s.logged_in
+          ? `구독 연동: ${esc(who)}${esc(tier)}`
+          : iconize("⚠ 로그인 필요 — 터미널에서 claude 실행 후 /login");
+        if (!s.logged_in) refreshIcons();
         el.style.color = s.logged_in ? "var(--ok)" : "var(--bad)";
       });
       continue;
@@ -742,3 +786,4 @@ resetScene();
 loadModels();
 loadKeyStatus();
 attachLatest();   // 새로고침 후에도 진행 중/최근 실행에 자동 연결
+refreshIcons();   // 정적 HTML의 lucide 아이콘 렌더
