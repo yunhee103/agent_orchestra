@@ -147,6 +147,7 @@ def _node_event(node: str, update: dict, models: dict) -> dict | None:
     if node == "decompose":
         event["project_name"] = update.get("project_name", "")
         event["workdir"] = update.get("workdir", "")
+        event["prd"] = update.get("prd", "")
         event["tasks"] = [
             {"task_id": t["task_id"], "role": t.get("role", "backend"),
              "target_file": t["target_file"], "description": t["description"]}

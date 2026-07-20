@@ -82,6 +82,7 @@ class OrchestraState(TypedDict):
     decisions: list[Decision]
     specialists: list[Specialist]    # 초청된 전문가와 자문 결과
     # 체계 산출물: 분해 시 함께 확정된다
+    prd: str                         # 제품 요구사항 문서 (PRD.md로 저장됨)
     architecture: str                # 설계 체계 (레이어, 모듈 경계, 데이터 흐름)
     conventions: str                 # 개발 체계 (컨벤션, 에러 처리, 로깅 규칙)
     verification_plan: str           # 검증 체계 (무엇을 어떻게 테스트할지)
@@ -108,6 +109,7 @@ def initial_state(user_request: str, workdir: str, models: dict,
         "models": models,
         "ponytail_level": ponytail_level,
         "trend_report": "",
+        "prd": "",
         "decisions": [],
         "specialists": [],
         "architecture": "",

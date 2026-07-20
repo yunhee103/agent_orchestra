@@ -528,6 +528,9 @@ function handleNode(ev) {
         $("projName").textContent = ev.project_name;
         $("projectRow").classList.remove("hidden");
         record(`📁 <b>프로젝트 폴더 생성</b> — <code>${esc(ev.project_name)}</code>`, "meet");
+      if (ev.prd)
+        record(`📜 <b>PRD 작성</b> — 코드보다 제품 정의가 먼저다 (PRD.md 저장됨)` +
+               fold("PRD 보기", ev.prd), "meet");
       }
       totalTasks = ev.tasks.length; implementedCount = 0;
       // 재설계인 경우 기존 워커 제거 후 다시 배치

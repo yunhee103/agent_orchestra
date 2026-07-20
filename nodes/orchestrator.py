@@ -91,7 +91,19 @@ DECOMPOSE_PROMPT = """너는 소프트웨어 프로젝트의 총괄 책임자다
 
 [0] 프로젝트 이름 (project_name): 폴더명으로 쓸 짧은 영문 소문자 슬러그
     (예: unit-converter, todo-api). 공백 대신 하이픈.
+[0.5] PRD (prd): 코드보다 먼저 제품을 정의하라. 아래 마크다운 템플릿 그대로:
+    # (제품 이름)
+    ## 한 줄 요약 — 누가, 무엇을 위해 쓰는 무엇인지 한 문장
+    ## 누가 쓰나요 — 주 사용자 / 사용자의 상황이나 고민
+    ## 언제, 어떤 상황에서 쓰나요 — 언제 / 어디서 / 어떤 문제를 풀려고
+    ## 핵심 기능 (꼭 필요한 것부터 번호로)
+    ## 이번에는 안 할 것 — 요청 범위 밖 기능을 명시적으로 배제 (매우 중요:
+       여기 적힌 것은 태스크로 만들지 마라)
+    ## 화면 흐름 — 켜면 -> ... (CLI면 실행 흐름)
+    ## 분위기와 참고 — 참고 서비스, 원하는 느낌 (UI 없는 도구면 생략 가능)
+    규모가 작은 도구면 각 섹션을 짧게. 지어내지 말고 요청·결정에서 도출하라.
 [1] 설계 체계 (architecture): 레이어 구조, 모듈 경계, 데이터 흐름, 왜 이 구조인지.
+    설계는 PRD의 핵심 기능을 전부 커버하고 '안 할 것'을 침범하지 않아야 한다.
 [2] 개발 체계 (conventions): 코딩 컨벤션, 에러 처리 규칙, 로깅, 의존성 정책.
     모든 워커가 이 규칙을 따르므로 구체적으로.
 [3] 검증 체계 (verification_plan): 무엇을 어떤 테스트로 검증할지, 경계 케이스.
@@ -101,7 +113,8 @@ DECOMPOSE_PROMPT = """너는 소프트웨어 프로젝트의 총괄 책임자다
     없으므로 각 태스크에 필요한 컨텍스트(관련 인터페이스, 결정사항, 컨벤션,
     자문 내용)를 요약하지 말고 원문으로 전부 포함하라.
     각 태스크에 role을 지정하라: backend | frontend | design | test | docs | devops
-    - 화면/스타일(HTML/CSS/템플릿) 파일은 design 또는 frontend
+    - 화면/스타일(HTML/CSS/템플릿) 파일은 design 또는 frontend.
+      이 role들의 context에는 PRD의 '화면 흐름'과 '분위기와 참고' 원문을 포함하라.
     - pytest 테스트 파일 태스크를 반드시 포함(role: test)
     - 외부 라이브러리를 쓰면 requirements.txt 태스크 포함(role: devops)
 
@@ -109,7 +122,7 @@ DECOMPOSE_PROMPT = """너는 소프트웨어 프로젝트의 총괄 책임자다
 
 반드시 아래 JSON 형식으로만 응답하라. 마크다운 코드펜스 없이 순수 JSON만.
 
-{"project_name": "...", "architecture": "...", "conventions": "...",
+{"project_name": "...", "prd": "...", "architecture": "...", "conventions": "...",
 "verification_plan": "...", "interface_spec": "...",
 "tasks": [{"task_id": "t1", "role": "backend", "description": "...",
 "interface_spec": "...", "target_file": "...", "context": "..."}]}
@@ -126,6 +139,8 @@ DESIGN_REVIEW_PROMPT = """너는 수석 아키텍트다. 구현이 시작되기 
 5. 추측 감지: 외부 연동 대상(메신저·결제·클라우드 등 제3자 서비스)이
    사용자의 명시나 결정 없이 설계자 임의로 정해져 있는가? 그렇다면 반려하고
    어떤 항목을 사용자 결정으로 올려야 하는지 feedback에 적어라.
+6. PRD 정합: 설계·태스크가 PRD의 핵심 기능을 전부 커버하는가?
+   PRD의 '이번에는 안 할 것'에 적힌 기능이 태스크로 들어와 있으면 반려.
 5. 외부 의존성 은닉 (Hidden Dependencies): 설계(architecture, tasks) 내에 사용자가 명시적으로 결정하지 않은 특정 외부 서비스/API(예: AWS, 슬랙, Stripe 등 특정 벤더)가 임의로 지정되어 있는가? 추측에 의한 기본값 선택으로 간주하고 즉각 반려하라.
 
 아래 [장착된 리뷰 스킬]이 있으면 그 지침을 위 렌즈보다 최우선 기준으로 적용하라.
@@ -231,9 +246,13 @@ async def decompose(state: OrchestraState) -> dict:
         workdir = base / f"{name}-{suffix}"
         suffix += 1
     workdir.mkdir(parents=True, exist_ok=True)
+    prd = parsed.get("prd", "")
+    if prd:   # 코드보다 먼저 제품 정의가 파일로 남는다
+        (workdir / "PRD.md").write_text(prd, encoding="utf-8")
     return {
         "project_name": workdir.name,
         "workdir": str(workdir.resolve()),
+        "prd": prd,
         "architecture": parsed.get("architecture", ""),
         "conventions": parsed.get("conventions", ""),
         "verification_plan": parsed.get("verification_plan", ""),
@@ -263,6 +282,7 @@ async def design_review(state: OrchestraState) -> dict:
         HumanMessage(content=(
             f"사용자 요청:\n{state['user_request']}\n\n"
             f"사용자가 이미 확정한 결정 (이건 추측이 아니다):\n{decisions_text}\n\n"
+            f"PRD:\n{state.get('prd') or '(없음)'}\n\n"
             f"설계 체계:\n{state['architecture']}\n\n"
             f"개발 체계:\n{state['conventions']}\n\n"
             f"검증 체계:\n{state['verification_plan']}\n\n"
