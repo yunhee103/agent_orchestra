@@ -399,8 +399,11 @@ function handle(ev) {
   switch (ev.type) {
     case "started":
       models = ev.models;
-      $("modelInfo").textContent =
-        `총괄·설계 ${models.orchestrator} · 리뷰 ${models.reviewer} · 워커 ${models.worker} · 유틸 ${models.utility}`;
+      // 실행 시작 시 셀렉트를 실제 실행 모델로 동기화 (표시줄은 셀렉트를 따라감)
+      document.querySelectorAll("#modelPanel select[data-role]").forEach((el) => {
+        if (models[el.dataset.role]) el.value = models[el.dataset.role];
+      });
+      updateModelInfo();
       resetScene();
       setStage("트렌드 조사 중"); setLive(true);
       walkTo(trendbot, 3, 3);
@@ -647,7 +650,19 @@ async function loadModels() {
       </select></div>`);
   }
   $("modelPanel").innerHTML = rows.join("");
+  updateModelInfo();
 }
+
+// 모델 표시줄은 셀렉트 선택을 실시간으로 따라간다
+function updateModelInfo() {
+  const m = selectedModels();
+  const parts = [["orchestrator", "총괄·설계"], ["reviewer", "리뷰"],
+                 ["worker", "워커"], ["utility", "유틸"]]
+    .filter(([role]) => m[role])
+    .map(([role, label]) => `${label} ${m[role]}`);
+  $("modelInfo").textContent = parts.join(" · ");
+}
+$("modelPanel").addEventListener("change", updateModelInfo);
 
 function selectedModels() {
   const out = {};
