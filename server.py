@@ -315,6 +315,31 @@ async def get_claude_auth():
     return {"mode": os.environ.get("CLAUDE_AUTH_MODE", "api") or "api"}
 
 
+@app.get("/settings/claude-auth/status")
+async def claude_auth_status():
+    """구독 인증의 실체 확인: Claude Code CLI의 로그인 상태를 조회한다.
+
+    authMethod가 'claude.ai'면 OAuth 구독 세션(키 아님)으로 인증 중이라는 뜻.
+    비번은 이 앱을 거치지 않는다 — 로그인은 Claude Code가 브라우저 OAuth로 처리.
+    """
+    import json as _json
+    import subprocess
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run, "claude auth status",
+            shell=True, capture_output=True, text=True, timeout=20)
+        info = _json.loads(proc.stdout)
+        return {"logged_in": bool(info.get("loggedIn")),
+                "auth_method": info.get("authMethod", ""),
+                "email": info.get("email", ""),
+                "org": info.get("orgName", ""),
+                "subscription": info.get("subscriptionType", "")}
+    except Exception:
+        return {"logged_in": False, "auth_method": "",
+                "email": "", "org": "", "subscription": "",
+                "error": "Claude Code CLI를 찾을 수 없거나 로그인되지 않음"}
+
+
 @app.post("/settings/claude-auth")
 async def set_claude_auth(body: AuthModeRequest):
     """Claude 호출 경로 전환: API 키 결제 vs Pro/Max 구독(Claude Code)."""

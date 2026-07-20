@@ -413,12 +413,16 @@ function handle(ev) {
         const t = tasks[tid];
         if (t) w.subtitle = `${t.target_file} ${t.verified ? "✓" : ""}`;
       });
+      // 실행 종료 — 연결을 닫지 않으면 EventSource가 자동 재접속해서
+      // 히스토리가 무한 리플레이된다 (렉처럼 보이는 원인).
+      if (es) { es.close(); es = null; }
       break;
     }
 
     case "error":
       record(`❌ <b>오류</b> — ${esc(ev.message)}`, "fail");
       say(verifier, "문제가 생겼다! 기록을 확인하라.", 6000);
+      if (es) { es.close(); es = null; }   // 재접속 무한 리플레이 방지
       break;
   }
 }
@@ -690,8 +694,15 @@ async function loadKeyStatus() {
   for (const [provider, suffix] of Object.entries(KEY_FIELDS)) {
     const el = $("st" + suffix);
     if (provider === "anthropic" && auth.mode === "subscription") {
-      el.textContent = "구독 인증 사용 중";
-      el.style.color = "var(--ok)";
+      el.textContent = "구독 확인 중...";
+      fetch("/settings/claude-auth/status").then((r) => r.json()).then((s) => {
+        const who = s.email || s.org || "claude.ai 계정";
+        const tier = s.subscription ? ` (${s.subscription})` : "";
+        el.textContent = s.logged_in
+          ? `구독 연동: ${who}${tier}`
+          : "⚠ 로그인 필요 — 터미널에서 claude 실행 후 /login";
+        el.style.color = s.logged_in ? "var(--ok)" : "var(--bad)";
+      });
       continue;
     }
     el.textContent = st[provider].set ? `연동됨 ${st[provider].hint}` : "미설정";
