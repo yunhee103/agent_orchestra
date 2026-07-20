@@ -68,7 +68,7 @@ function makeActor(sprite, name, gx, gy) {
   const a = {
     sprite, name, x: px(gx), y: px(gy), tx: px(gx), ty: px(gy),
     speed: 130, flip: false, bubble: null, bubbleUntil: 0,
-    typing: false, working: null, nextStatusAt: 0,
+    typing: false, working: null, nextStatusAt: 0, subtitle: "",
     patrol: null, patrolIdx: 0, home: [gx, gy], visible: true,
   };
   actors.push(a);
@@ -189,6 +189,14 @@ function loop(t) {
     ctx.fillRect(a.x - nw / 2, a.y + 12, nw, 15);
     ctx.fillStyle = "#fff"; ctx.textAlign = "center";
     ctx.fillText(a.name, a.x, a.y + 23);
+    if (a.subtitle) {   // 종료 후 각자 수행한 역할 표시
+      ctx.font = "10px 'Malgun Gothic', sans-serif";
+      const sw = ctx.measureText(a.subtitle).width + 8;
+      ctx.fillStyle = "rgba(0,0,0,.45)";
+      ctx.fillRect(a.x - sw / 2, a.y + 28, sw, 13);
+      ctx.fillStyle = "#ffd98a";
+      ctx.fillText(a.subtitle, a.x, a.y + 38);
+    }
   }
   for (const a of actors)
     if (a.visible && a.bubble && now < a.bubbleUntil) drawBubble(a);
@@ -386,15 +394,27 @@ function handle(ev) {
       closeDialog();   // 히스토리 재생 시 이미 답한 회의 대화창이 다시 열리는 것 방지
       break;
 
-    case "done":
+    case "done": {
       record(`🏁 <b>실행 종료</b><pre>${esc(ev.final_summary)}</pre>`, "meet");
+      // 다들 자기 자리로 돌아가 앉고, 이름표 아래에 맡았던 역할을 남긴다.
+      const ROLE_DONE = {
+        "총괄": "기획·설계 총괄", "서기": "전 과정 기록", "QA": "샌드박스 검증",
+        "경리": `LLM 호출 ${ev.llm_calls_total ?? llmCalls}회 결산`,
+        "수석 아키텍트": "설계·코드 리뷰", "트렌드봇": "기술 동향 조사",
+      };
       actors.forEach((a) => {
         if (!a.visible) return;
         stopWork(a);
-        walkTo(a, 8 + Math.random() * 4 | 0, 4 + Math.random() * 3 | 0);
-        say(a, "🎉", 6000);
+        goHome(a);
+        if (ROLE_DONE[a.name]) a.subtitle = ROLE_DONE[a.name];
+        say(a, "🎉 수고했다!", 4000);
+      });
+      Object.entries(taskWorker).forEach(([tid, w]) => {
+        const t = tasks[tid];
+        if (t) w.subtitle = `${t.target_file} ${t.verified ? "✓" : ""}`;
       });
       break;
+    }
 
     case "error":
       record(`❌ <b>오류</b> — ${esc(ev.message)}`, "fail");
