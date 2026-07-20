@@ -38,7 +38,7 @@ class SubscriptionClaude:
 
     async def _query(self, messages):
         from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions,
-                                      TextBlock, query)
+                                      ResultMessage, TextBlock, query)
         system_parts, user_parts = [], []
         for m in messages:
             if isinstance(m, tuple):          # ("system", "...") 형태
@@ -61,12 +61,16 @@ class SubscriptionClaude:
             env={"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": ""},
         )
         text = ""
+        usage = {}
         async for msg in query(prompt="\n\n".join(user_parts), options=options):
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
                     if isinstance(block, TextBlock):
                         text += block.text
-        return SimpleNamespace(content=text)
+            elif isinstance(msg, ResultMessage) and msg.usage:
+                usage = {"input_tokens": msg.usage.get("input_tokens", 0),
+                         "output_tokens": msg.usage.get("output_tokens", 0)}
+        return SimpleNamespace(content=text, usage_metadata=usage)
 
 
 def make_llm(model: str, max_tokens: int = 8192):
@@ -94,6 +98,13 @@ def make_llm(model: str, max_tokens: int = 8192):
         }
         kwargs["model_kwargs"] = {"fallbacks": [{"model": "claude-opus-4-8"}]}
     return ChatAnthropic(**kwargs)
+
+
+def usage_of(response) -> dict:
+    """LLM 응답에서 토큰 사용량을 뽑는다. {input, output}. 없으면 0."""
+    meta = getattr(response, "usage_metadata", None) or {}
+    return {"input": meta.get("input_tokens", 0) or 0,
+            "output": meta.get("output_tokens", 0) or 0}
 
 
 def strip_code_fence(raw: str) -> str:

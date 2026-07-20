@@ -11,7 +11,7 @@ import httpx
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from config import MODEL_CATALOG
-from nodes.util import make_llm
+from nodes.util import make_llm, usage_of
 from state import OrchestraState
 
 SEARCH_URL = "https://html.duckduckgo.com/html/"
@@ -73,7 +73,7 @@ async def _gemini_grounded_trends(state: OrchestraState, model: str) -> str:
          ))],
         tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
     )
-    return response.content
+    return response
 
 
 async def trend_research(state: OrchestraState) -> dict:
@@ -81,8 +81,9 @@ async def trend_research(state: OrchestraState) -> dict:
     model = state["models"]["utility"]
     if MODEL_CATALOG.get(model) == "google":
         try:
-            report = await _gemini_grounded_trends(state, model)
-            return {"trend_report": f"(Google 검색 그라운딩)\n{report}",
+            resp = await _gemini_grounded_trends(state, model)
+            return {"trend_report": f"(Google 검색 그라운딩)\n{resp.content}",
+                    "token_usage": {"유틸": usage_of(resp)},
                     "llm_call_count": 1}
         except Exception:
             pass   # 그라운딩 실패 시 아래 DDG 경로로 폴백
@@ -99,4 +100,6 @@ async def trend_research(state: OrchestraState) -> dict:
         SystemMessage(content=SUMMARIZE_PROMPT),
         HumanMessage(content=f"프로젝트 요청: {state['user_request']}\n\n검색 결과:\n{corpus}"),
     ])
-    return {"trend_report": response.content, "llm_call_count": 1}
+    return {"trend_report": response.content,
+            "token_usage": {"유틸": usage_of(response)},
+            "llm_call_count": 1}

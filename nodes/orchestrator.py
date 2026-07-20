@@ -15,7 +15,7 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from nodes.util import make_llm, strip_code_fence
+from nodes.util import make_llm, strip_code_fence, usage_of
 from state import OrchestraState
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
@@ -136,12 +136,13 @@ DESIGN_REVIEW_PROMPT = """너는 수석 아키텍트다. 구현이 시작되기 
 2. 완결성: 태스크 컨텍스트만으로 워커가 독립 구현이 가능한가? 빠진 파일은 없는가?
 3. 검증 가능성: 검증 계획이 실제 pytest로 실행 가능한가?
 4. 결정 준수: 사용자가 내린 결정과 자문 내용이 설계에 반영됐는가?
-5. 추측 감지: 외부 연동 대상(메신저·결제·클라우드 등 제3자 서비스)이
-   사용자의 명시나 결정 없이 설계자 임의로 정해져 있는가? 그렇다면 반려하고
-   어떤 항목을 사용자 결정으로 올려야 하는지 feedback에 적어라.
+5. 외부 의존성 은닉 (Hidden Dependencies): 설계(architecture, tasks) 내에
+   사용자가 명시적으로 결정하지 않은 특정 외부 서비스/API(예: AWS, 슬랙,
+   Stripe 등 특정 벤더)가 임의로 지정되어 있는가? 추측에 의한 기본값 선택으로
+   간주하고 즉각 반려하라. 어떤 항목을 사용자 결정으로 올려야 하는지
+   feedback에 적어라. (단, '사용자가 이미 확정한 결정'에 있는 것은 추측이 아니다)
 6. PRD 정합: 설계·태스크가 PRD의 핵심 기능을 전부 커버하는가?
    PRD의 '이번에는 안 할 것'에 적힌 기능이 태스크로 들어와 있으면 반려.
-5. 외부 의존성 은닉 (Hidden Dependencies): 설계(architecture, tasks) 내에 사용자가 명시적으로 결정하지 않은 특정 외부 서비스/API(예: AWS, 슬랙, Stripe 등 특정 벤더)가 임의로 지정되어 있는가? 추측에 의한 기본값 선택으로 간주하고 즉각 반려하라.
 
 아래 [장착된 리뷰 스킬]이 있으면 그 지침을 위 렌즈보다 최우선 기준으로 적용하라.
 
@@ -194,6 +195,7 @@ async def collect_decisions(state: OrchestraState) -> dict:
     return {
         "decisions": parsed.get("decisions", []),
         "specialists": parsed.get("specialists", []),
+        "token_usage": {"총괄·설계": usage_of(response)},
         "llm_call_count": 1,
     }
 
@@ -203,6 +205,7 @@ async def consult_specialists(state: OrchestraState) -> dict:
     llm = make_llm(state["models"]["orchestrator"], max_tokens=2048)
     updated = []
     calls = 0
+    usage = {"input": 0, "output": 0}
     for sp in state["specialists"]:
         response = await llm.ainvoke([
             SystemMessage(content=CONSULT_PROMPT.format(
@@ -210,8 +213,11 @@ async def consult_specialists(state: OrchestraState) -> dict:
             HumanMessage(content=state["user_request"]),
         ])
         updated.append({**sp, "notes": response.content})
+        usage["input"] += usage_of(response)["input"]
+        usage["output"] += usage_of(response)["output"]
         calls += 1
-    return {"specialists": updated, "llm_call_count": calls}
+    return {"specialists": updated, "token_usage": {"총괄·설계": usage},
+            "llm_call_count": calls}
 
 
 async def decompose(state: OrchestraState) -> dict:
@@ -258,6 +264,7 @@ async def decompose(state: OrchestraState) -> dict:
         "verification_plan": parsed.get("verification_plan", ""),
         "interface_spec": parsed["interface_spec"],
         "tasks": parsed["tasks"],
+        "token_usage": {"총괄·설계": usage_of(response)},
         "llm_call_count": 1,
     }
 
@@ -298,6 +305,7 @@ async def design_review(state: OrchestraState) -> dict:
         "design_feedback": "" if approved else
             feedback + ("\n문제점: " + "; ".join(issues) if issues else ""),
         "design_review_rounds": state["design_review_rounds"] + (0 if approved else 1),
+        "token_usage": {"리뷰": usage_of(response)},
         "llm_call_count": 1,
     }
 
@@ -343,4 +351,5 @@ async def code_review(state: OrchestraState) -> dict:
               + (f"\n삭제 가능 추정: {saved}줄" if saved else "")).strip()
     return {"code_review_report": report or "발견 없음 — 군더더기 없는 코드.",
             "code_review_findings": findings,
+            "token_usage": {"리뷰": usage_of(response)},
             "llm_call_count": 1}

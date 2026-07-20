@@ -450,6 +450,19 @@ function handle(ev) {
       if (workTime) {
         toast(`프로젝트 완성 — 제작 시간 단 ${workTime}!`, "info", 8000);
       }
+      // 역할별 토큰 결산표
+      if (ev.token_usage && Object.keys(ev.token_usage).length) {
+        const fmtK = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n));
+        let tin = 0, tout = 0;
+        const rows = Object.entries(ev.token_usage).map(([role, u]) => {
+          tin += u.input; tout += u.output;
+          return `${role.padEnd(14)} 입력 ${fmtK(u.input).padStart(7)} · 출력 ${fmtK(u.output).padStart(7)}`;
+        });
+        rows.push(`${"합계".padEnd(14)} 입력 ${fmtK(tin).padStart(7)} · 출력 ${fmtK(tout).padStart(7)}`);
+        record(`💰 <b>경리의 토큰 결산</b> — 총 입력 ${fmtK(tin)} / 출력 ${fmtK(tout)}` +
+               fold("역할별 상세", rows.join("\n")), "meet");
+        say(accountant, `토큰 결산 완료: 입력 ${fmtK(tin)}, 출력 ${fmtK(tout)}.`, 6000);
+      }
       // 다들 자기 자리로 돌아가 앉고, 이름표 아래에 맡았던 역할을 남긴다.
       const ROLE_DONE = {
         "총괄": "기획·설계 총괄", "서기": "전 과정 기록", "QA": "샌드박스 검증",

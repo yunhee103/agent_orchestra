@@ -9,7 +9,7 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from nodes.util import make_llm, strip_code_fence
+from nodes.util import make_llm, strip_code_fence, usage_of
 from state import SubTask, TaskResult
 
 # role -> 시니어 페르소나. 모두 "경력 많고 능력 있는 시니어" 전제.
@@ -127,6 +127,7 @@ async def implement_task(
         "retry_count": (previous["retry_count"] + 1) if previous else 0,
         "verified": False,
         "last_error": None,
+        "usage": usage_of(response),   # 역할별 토큰 집계용
     }
 
 
@@ -141,4 +142,6 @@ async def implement_node(payload: dict) -> dict:
         payload["workdir"], payload["model"],
     )
     # llm_call_count는 operator.add 리듀서이므로 증분만 반환한다.
-    return {"results": [result], "llm_call_count": 1}
+    role = payload["task"].get("role", "worker")
+    return {"results": [result], "llm_call_count": 1,
+            "token_usage": {f"워커:{role}": result.get("usage", {})}}

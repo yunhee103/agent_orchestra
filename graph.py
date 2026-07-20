@@ -53,6 +53,18 @@ def fan_out_tasks(state: OrchestraState) -> list[Send]:
     ]
 
 
+
+def _worker_usage(task_map: dict, results: list) -> dict:
+    """재작성 결과들의 토큰 사용량을 워커 role별로 합산한다."""
+    usage: dict = {}
+    for r in results:
+        role = task_map.get(r["task_id"], {}).get("role", "worker")
+        cur = usage.setdefault(f"워커:{role}", {"input": 0, "output": 0})
+        u = r.get("usage") or {}
+        cur["input"] += u.get("input", 0)
+        cur["output"] += u.get("output", 0)
+    return usage
+
 async def rework_node(state: OrchestraState) -> dict:
     """검증 실패가 특정된 태스크만 실패 로그와 함께 병렬 재구현한다."""
     task_map = {t["task_id"]: t for t in state["tasks"]}
@@ -72,7 +84,8 @@ async def rework_node(state: OrchestraState) -> dict:
             for r in to_fix
         )
     )
-    return {"results": list(fixed), "llm_call_count": len(fixed)}
+    return {"results": list(fixed), "llm_call_count": len(fixed),
+            "token_usage": _worker_usage(task_map, fixed)}
 
 
 def escalate_node(state: OrchestraState) -> dict:
@@ -160,7 +173,8 @@ async def refactor_node(state: OrchestraState) -> dict:
     if not jobs:
         return {"llm_call_count": 0}
     refactored = await asyncio.gather(*jobs)
-    return {"results": list(refactored), "llm_call_count": len(refactored)}
+    return {"results": list(refactored), "llm_call_count": len(refactored),
+            "token_usage": _worker_usage(task_map, refactored)}
 
 
 def route_after_escalate(state: OrchestraState) -> str:

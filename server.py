@@ -209,6 +209,7 @@ async def _execute(run: Run) -> None:
         run.emit({"type": "done",
                   "final_summary": state.values.get("final_summary", "요약 없음"),
                   "llm_calls_total": state.values.get("llm_call_count", 0),
+                  "token_usage": state.values.get("token_usage", {}),
                   "elapsed_seconds": round(elapsed),
                   "work_seconds": round(elapsed - wait_total)})
     except Exception as exc:  # 실행 오류도 UI에 보여야 한다

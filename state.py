@@ -58,6 +58,16 @@ class TaskResult(TypedDict):
     last_error: Optional[str]
 
 
+def merge_usage(existing: dict, new: dict) -> dict:
+    """역할별 토큰 사용량 누적 리듀서. {역할: {input, output}} 를 합산한다."""
+    merged = {k: dict(v) for k, v in existing.items()}
+    for role, usage in new.items():
+        cur = merged.setdefault(role, {"input": 0, "output": 0})
+        cur["input"] += usage.get("input", 0)
+        cur["output"] += usage.get("output", 0)
+    return merged
+
+
 def merge_results(
     existing: list[TaskResult], new: list[TaskResult]
 ) -> list[TaskResult]:
@@ -95,6 +105,7 @@ class OrchestraState(TypedDict):
     results: Annotated[list[TaskResult], merge_results]
     # 병렬 브랜치가 동시에 갱신하므로 누적 리듀서 필수. 노드는 총합이 아닌 증분을 반환할 것.
     llm_call_count: Annotated[int, operator.add]
+    token_usage: Annotated[dict, merge_usage]   # 역할별 {input, output} 토큰
     base_dir: str                    # 프로젝트 폴더들이 생성되는 상위 디렉토리
     project_name: str                # 총괄이 설계 시 지은 이름 (폴더명)
     workdir: str                     # 실제 생성 위치 = base_dir/project_name
@@ -123,6 +134,7 @@ def initial_state(user_request: str, workdir: str, models: dict,
         "tasks": [],
         "results": [],
         "llm_call_count": 0,
+        "token_usage": {},
         "base_dir": workdir,
         "project_name": "",
         # 총괄이 프로젝트 이름을 짓기 전까지는 base에 직접 쓰지 않도록
