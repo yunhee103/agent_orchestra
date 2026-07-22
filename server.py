@@ -213,7 +213,12 @@ async def _execute(run: Run) -> None:
                   "elapsed_seconds": round(elapsed),
                   "work_seconds": round(elapsed - wait_total)})
     except Exception as exc:  # 실행 오류도 UI에 보여야 한다
-        run.emit({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+        message = f"{type(exc).__name__}: {exc}"
+        if "RESOURCE_EXHAUSTED" in message or "429" in message:
+            message = ("모델 쿼터 초과 — 해당 프로바이더의 현재 등급에서 이 모델을 "
+                       "쓸 수 없거나 한도가 소진됐습니다. 역할별 모델에서 다른 모델을 "
+                       "선택하거나 프로바이더 콘솔에서 결제를 등록하세요.\n" + message)
+        run.emit({"type": "error", "message": message})
     finally:
         run.finished = True
 

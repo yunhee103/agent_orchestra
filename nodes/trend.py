@@ -77,7 +77,18 @@ async def _gemini_grounded_trends(state: OrchestraState, model: str) -> str:
 
 
 async def trend_research(state: OrchestraState) -> dict:
-    """요청 관련 최신 트렌드를 조사해 요약을 상태에 넣는다."""
+    """요청 관련 최신 트렌드를 조사해 요약을 상태에 넣는다.
+
+    트렌드는 보조 정보 — 어떤 실패(쿼터 초과 등)도 실행을 죽이면 안 된다.
+    """
+    try:
+        return await _trend_research(state)
+    except Exception as exc:
+        return {"trend_report": f"(트렌드 조사 실패 — 건너뜀: {type(exc).__name__})",
+                "llm_call_count": 0}
+
+
+async def _trend_research(state: OrchestraState) -> dict:
     model = state["models"]["utility"]
     if MODEL_CATALOG.get(model) == "google":
         try:
