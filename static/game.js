@@ -488,10 +488,16 @@ function handle(ev) {
       break;
     }
 
+    case "retry":
+      record(`🔧 <b>재시도</b> — 마지막 체크포인트부터 이어서 실행한다.`, "meet");
+      setStage("재시도 — 이어서 진행"); setLive(true);
+      break;
+
     case "error":
-      record(`❌ <b>오류</b> — ${esc(ev.message)}`, "fail");
+      record(`❌ <b>오류</b> — ${esc(ev.message)}<br>` +
+             `<button class="tool" onclick="retryRun()">여기서부터 재시도</button>`, "fail");
       say(verifier, "문제가 생겼다! 기록을 확인하라.", 6000);
-      setStage("오류"); setLive(false);
+      setStage("오류 — 재시도 가능"); setLive(false);
       $("startBtn").disabled = false;
       if (es) { es.close(); es = null; }   // 재접속 무한 리플레이 방지
       break;
@@ -757,6 +763,18 @@ async function attachLatest() {
   } catch (e) { /* 서버 재시작 중이면 다음 폴링에서 재시도 */ }
 }
 setInterval(attachLatest, 8000);
+
+// 에러 지점부터 재시도 (오류 기록의 버튼에서 호출)
+window.retryRun = async () => {
+  if (!runId) { toast("재시도할 실행이 없습니다.", "err"); return; }
+  const r = await fetch(`/runs/${runId}/retry`, { method: "POST" });
+  if (!r.ok) {
+    toast(`재시도 실패: ${(await r.json()).detail}`, "err", 6000);
+    return;
+  }
+  attachRun(runId);   // 히스토리 재생 + 이어지는 이벤트 수신
+  toast("마지막 체크포인트부터 재시도합니다.");
+};
 
 // ---------- 포니테일 도구 버튼 ----------
 const wd = () => encodeURIComponent(currentWorkdir || $("workdirInput").value);

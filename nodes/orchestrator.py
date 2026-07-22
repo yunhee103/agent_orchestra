@@ -193,8 +193,8 @@ async def collect_decisions(state: OrchestraState) -> dict:
     ])
     parsed = await _parse_json(response.content, llm)
     return {
-        "decisions": parsed.get("decisions", []),
-        "specialists": parsed.get("specialists", []),
+        "decisions": parsed.get("decisions") or [],
+        "specialists": parsed.get("specialists") or [],
         "token_usage": {"총괄·설계": usage_of(response)},
         "llm_call_count": 1,
     }
@@ -244,7 +244,7 @@ async def decompose(state: OrchestraState) -> dict:
     ])
     parsed = await _parse_json(response.content, llm)
     # 프로젝트 폴더 확정: base_dir/<이름>. 이미 있으면 -2, -3... 으로 회피.
-    name = _safe_folder_name(parsed.get("project_name", ""))
+    name = _safe_folder_name(parsed.get("project_name") or "")
     base = Path(state["base_dir"])
     workdir = base / name
     suffix = 2
@@ -252,16 +252,16 @@ async def decompose(state: OrchestraState) -> dict:
         workdir = base / f"{name}-{suffix}"
         suffix += 1
     workdir.mkdir(parents=True, exist_ok=True)
-    prd = parsed.get("prd", "")
+    prd = parsed.get("prd") or ""
     if prd:   # 코드보다 먼저 제품 정의가 파일로 남는다
         (workdir / "PRD.md").write_text(prd, encoding="utf-8")
     return {
         "project_name": workdir.name,
         "workdir": str(workdir.resolve()),
         "prd": prd,
-        "architecture": parsed.get("architecture", ""),
-        "conventions": parsed.get("conventions", ""),
-        "verification_plan": parsed.get("verification_plan", ""),
+        "architecture": parsed.get("architecture") or "",
+        "conventions": parsed.get("conventions") or "",
+        "verification_plan": parsed.get("verification_plan") or "",
         "interface_spec": parsed["interface_spec"],
         "tasks": parsed["tasks"],
         "token_usage": {"총괄·설계": usage_of(response)},
@@ -299,8 +299,9 @@ async def design_review(state: OrchestraState) -> dict:
     ])
     parsed = await _parse_json(response.content, llm)
     approved = bool(parsed.get("approved"))
-    feedback = parsed.get("feedback", "")
-    issues = parsed.get("issues", [])
+    # 모델이 "feedback": null 을 내면 .get(k, "")도 None을 반환한다 — or로 강제
+    feedback = parsed.get("feedback") or ""
+    issues = [i for i in (parsed.get("issues") or []) if i]
     return {
         "design_feedback": "" if approved else
             feedback + ("\n문제점: " + "; ".join(issues) if issues else ""),
@@ -347,7 +348,7 @@ async def code_review(state: OrchestraState) -> dict:
                 if f.get("file") and f.get("suggestion")]
     saved = sum(f.get("deletable_lines", 0) or 0 for f in findings)
     lines = [f"- {f['file']}: {f['issue']} -> {f['suggestion']}" for f in findings]
-    report = (parsed.get("summary", "") + "\n" + "\n".join(lines)
+    report = ((parsed.get("summary") or "") + "\n" + "\n".join(lines)
               + (f"\n삭제 가능 추정: {saved}줄" if saved else "")).strip()
     return {"code_review_report": report or "발견 없음 — 군더더기 없는 코드.",
             "code_review_findings": findings,

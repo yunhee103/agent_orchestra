@@ -175,15 +175,19 @@ def _node_event(node: str, update: dict, models: dict) -> dict | None:
     return event
 
 
-async def _execute(run: Run) -> None:
-    """그래프를 스트리밍 실행하며 이벤트를 emit하고, interrupt 시 재개를 기다린다."""
+async def _execute(run: Run, resume: bool = False) -> None:
+    """그래프를 스트리밍 실행하며 이벤트를 emit하고, interrupt 시 재개를 기다린다.
+
+    resume=True면 초기 상태 대신 None을 넣어 SqliteSaver의 마지막 체크포인트부터
+    이어서 실행한다 — 노드 실행 중 에러로 죽은 지점부터 재시도하는 경로.
+    """
     import time
     started_at = time.monotonic()
     wait_total = 0.0   # 회의(사용자 결정) 대기 시간 — 제작 시간에서 제외
     graph = build_graph(_SAVER)
     config = {"configurable": {"thread_id": run.id}}
-    graph_input = initial_state(run.user_request, run.workdir, run.models,
-                                run.ponytail_level)
+    graph_input = None if resume else initial_state(
+        run.user_request, run.workdir, run.models, run.ponytail_level)
     try:
         while True:
             interrupt_payload = None
@@ -462,6 +466,20 @@ async def ponytail_gain(workdir: str):
                     if l.strip() and not l.startswith("#")])
     return {"files": len(files), "total_lines": total,
             "dependencies": deps, "largest": stats[:5]}
+
+
+@app.post("/runs/{run_id}/retry")
+async def retry_run(run_id: str):
+    """에러로 죽은 실행을 마지막 체크포인트부터 이어서 재시도한다."""
+    run = RUNS.get(run_id)
+    if run is None:
+        raise HTTPException(404, "run 없음 (서버 재시작 후엔 새 의뢰로 다시 시작)")
+    if not run.finished:
+        raise HTTPException(409, "아직 실행 중")
+    run.finished = False
+    run.emit({"type": "retry"})
+    asyncio.get_event_loop().create_task(_execute(run, resume=True))
+    return {"ok": True}
 
 
 @app.post("/runs/{run_id}/resume")
